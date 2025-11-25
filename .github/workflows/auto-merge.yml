@@ -14,23 +14,47 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
       
-      - name: Check for deletions
+      - name: Check for deletions and deleted files
         id: check_deletions
         run: |
-          # Get the diff stats
-          DIFF_STATS=$(gh pr diff ${{ github.event.pull_request.number }} --stat)
-          echo "$DIFF_STATS"
+          # Fetch the base branch
+          git fetch origin ${{ github.event.pull_request.base.ref }}
           
-          # Extract deletions count (look for pattern like "1 file changed, 5 insertions(+), 3 deletions(-)")
-          DELETIONS=$(echo "$DIFF_STATS" | grep -oP '\d+(?= deletion)' || echo "0")
+          # Get diff stats between base and PR head
+          DIFF_STATS=$(git diff --shortstat origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          echo "Diff stats: $DIFF_STATS"
           
-          echo "Deletions found: $DELETIONS"
+          # Check for deleted files
+          DELETED_FILES=$(git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | grep "^D" || true)
           
-          if [ "$DELETIONS" -gt 0 ]; then
+          HAS_ISSUES=false
+          ERROR_MESSAGE=""
+          
+          # Check if there are any line deletions
+          if echo "$DIFF_STATS" | grep -q "deletion"; then
+            HAS_ISSUES=true
+            ERROR_MESSAGE="${ERROR_MESSAGE}• Line deletions detected\n"
+            echo "❌ Line deletions detected"
+          fi
+          
+          # Check if there are any deleted files
+          if [ -n "$DELETED_FILES" ]; then
+            HAS_ISSUES=true
+            ERROR_MESSAGE="${ERROR_MESSAGE}• Deleted files detected:\n\`\`\`\n${DELETED_FILES}\n\`\`\`\n"
+            echo "❌ Deleted files detected:"
+            echo "$DELETED_FILES"
+          fi
+          
+          if [ "$HAS_ISSUES" = true ]; then
             echo "has_deletions=true" >> $GITHUB_OUTPUT
+            echo "error_message<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$ERROR_MESSAGE" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "has_deletions=false" >> $GITHUB_OUTPUT
+            echo "✅ No deletions or deleted files found"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,7 +62,7 @@ jobs:
       - name: Comment and close if deletions found
         if: steps.check_deletions.outputs.has_deletions == 'true'
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "❌ **Error: Deleting is not allowed**\nThis PR contains deletions and cannot be merged. Please only add new content without removing existing lines."
+          gh pr comment ${{ github.event.pull_request.number }} --body "❌ **Error: Deleting is not allowed**\nThis PR contains deletions and cannot be merged: ${{ steps.check_deletions.outputs.error_message }}\n **Possible causes:**\n - You're working from an outdated fork\n - Files or lines were removed\n**Solution:**\nPlease sync your fork with the latest main branch and only add new content without removing existing files or lines."
           gh pr close ${{ github.event.pull_request.number }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,4 +73,3 @@ jobs:
           gh pr merge ${{ github.event.pull_request.number }} --merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

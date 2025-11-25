@@ -62,18 +62,20 @@ jobs:
       - name: Comment and close if deletions found
         if: steps.check_deletions.outputs.has_deletions == 'true'
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "❌ **Error: Deleting is not allowed**
+          gh pr comment ${{ github.event.pull_request.number }} --body - << 'EOF'
+          ❌ **Error: Deleting is not allowed**
 
-This PR contains deletions and cannot be merged:
+          This PR contains deletions and cannot be merged:
 
-${{ steps.check_deletions.outputs.error_message }}
+          ${{ steps.check_deletions.outputs.error_message }}
 
-**Possible causes:**
-- You're working from an outdated fork
-- Files or lines were removed
+          **Possible causes:**
+          - You're working from an outdated fork
+          - Files or lines were removed
 
-**Solution:**
-Please sync your fork with the latest main branch and only add new content without removing existing files or lines."
+          **Solution:**
+          Please sync your fork with the latest main branch and only add new content without removing existing files or lines.
+          EOF
           gh pr close ${{ github.event.pull_request.number }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

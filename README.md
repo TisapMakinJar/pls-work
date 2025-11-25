@@ -9,3 +9,5 @@ this pr has been described in the next line
 Case: (one PR containing three commits, where first 2 had deletions, but third one had same readme as og fork so no net deletions)
 
 Case: Interleaved merge commit, wonky branch history
+
+(PENDING: Someone puts up a new PR, and the file they've deleted was originally added by them)
